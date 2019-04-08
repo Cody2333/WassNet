@@ -17,6 +17,7 @@ from .one_step_gradient import FGSM
 
 from .iterative_projected_gradient import FastFeatureAttack
 from .iterative_projected_gradient import L2BasicIterativeAttack
+from .iterative_projected_gradient import L1BasicIterativeAttack
 from .iterative_projected_gradient import LinfBasicIterativeAttack
 from .iterative_projected_gradient import PGDAttack
 from .iterative_projected_gradient import LinfPGDAttack

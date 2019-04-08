@@ -18,7 +18,7 @@ from advertorch_examples.utils import get_mnist_train_loader
 from advertorch_examples.utils import get_mnist_test_loader
 from advertorch_examples.utils import TRAINED_MODEL_PATH
 from advertorch.test_utils import LeNet5
-from advertorch.attacks import LinfPGDAttack
+from advertorch.attacks import LinfPGDAttack,L1BasicIterativeAttack
 import torch.autograd as autograd
 
 DIM = 64
@@ -87,6 +87,7 @@ class Wasserstein():
         self.train_loader = train_loader
         self.adversary = adversary
         self.use_cuda = use_cuda
+        self.losses = {'loss': [], 'w_dist': []}
 
     def train(self, lr = 1e-4, betas = (0.5,0.9)):
         model = self.model
@@ -111,11 +112,16 @@ class Wasserstein():
                 loss.backward()
                 Wasserstein_D = D_real - D_fake
                 optimizer.step()
+                self.losses['loss'].append(loss.item())
+                self.losses['w_dist'].append(Wasserstein_D)
+
                 if batch_idx % args.log_interval == 0:
                     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tW_dist: {:.6f}'.format(
                         epoch, batch_idx *
                         len(data), len(train_loader.dataset),
                         100. * batch_idx / len(train_loader), loss.item(), Wasserstein_D))
+        self.save_model(epoch)
+        self.save_loss(epoch)
 
     def distance(self,real_data=None, fake_data=None):
         if not torch.is_tensor(real_data):
@@ -124,6 +130,13 @@ class Wasserstein():
             fake_data = self.fake_data
         w_distance = (self.model(real_data)-self.model(fake_data)).mean()
         return w_distance
+    def save_model(self,epoch):
+        torch.save(
+            self.model.state_dict(),
+            os.path.join(TRAINED_MODEL_PATH,  'epoch_' + str(epoch) + '_' + model_filename))
+    def save_loss(self, epoch):
+        np.save('loss_'+ str(epoch)+'.npy',self.losses['loss'])
+        np.save('w_dist_'+ str(epoch)+'.npy',self.losses['w_dist'])
 
 
 if __name__ == '__main__':
@@ -142,7 +155,7 @@ if __name__ == '__main__':
     device = torch.device("cuda" if use_cuda else "cpu")
     if args.mode == "cln":
         nb_epoch = 10
-        model_filename = "mnist_mynet_clntrained.pt"
+        model_filename = "mnist_wass_net.pt"
     else:
         raise
 
@@ -157,9 +170,9 @@ if __name__ == '__main__':
         torch.load(os.path.join(TRAINED_MODEL_PATH, filename), map_location='cpu'))
     model.to(device)
     model.eval()
-    adversary = LinfPGDAttack(
-        model, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=0.15,
-        nb_iter=40, eps_iter=0.01, rand_init=True, clip_min=0.0, clip_max=1.0,
+    adversary = L1BasicIterativeAttack(
+        model, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=0.2,
+        nb_iter=10, eps_iter=0.01, clip_min=0.0, clip_max=1.0,
         targeted=False)
     w = Wasserstein(Net,args.train_batch_size,LAMBDA,ITERS,train_loader, adversary,use_cuda)
     w.train()

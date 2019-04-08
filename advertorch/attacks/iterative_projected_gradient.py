@@ -67,7 +67,14 @@ def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
             delta.data = batch_clamp(eps, delta.data)
             delta.data = clamp(xvar.data + delta.data, clip_min, clip_max
                                ) - xvar.data
-
+        elif ord == 1:
+            grad = delta.grad.data
+            grad = normalize_by_pnorm(grad,1)
+            grad = grad * 28 *28
+            delta.data = delta.data + batch_multiply(eps_iter, grad)
+            delta.data = batch_clamp(eps, delta.data)
+            delta.data = clamp(xvar.data + delta.data, clip_min, clip_max
+                               ) - xvar.data
         elif ord == 2:
             grad = delta.grad.data
             grad = normalize_by_pnorm(grad)
@@ -191,7 +198,16 @@ class L2BasicIterativeAttack(PGDAttack):
         super(L2BasicIterativeAttack, self).__init__(
             predict, loss_fn, eps, nb_iter, eps_iter, rand_init,
             clip_min, clip_max, ord, targeted)
+class L1BasicIterativeAttack(PGDAttack):
+    """Like GradientAttack but with several steps for each epsilon."""
 
+    def __init__(self, predict, loss_fn=None, eps=0.1, nb_iter=10,
+                 eps_iter=0.05, clip_min=0., clip_max=1., targeted=False):
+        ord = 1
+        rand_init = False
+        super(L1BasicIterativeAttack, self).__init__(
+            predict, loss_fn, eps, nb_iter, eps_iter, rand_init,
+            clip_min, clip_max, ord, targeted)
 
 class LinfBasicIterativeAttack(PGDAttack):
     """
