@@ -4,7 +4,7 @@ a neural network trained to calc the wassersetain distence between normal and ad
 
 ## intro
 
-- tested on minst
+- tested on mnist
 - using PGD to generate adversarial samples
 - inspired by wgan
 - using gradient_penalty during the training
