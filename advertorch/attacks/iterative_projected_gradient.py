@@ -52,15 +52,36 @@ def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
         delta = delta_init
     else:
         delta = torch.zeros_like(xvar)
-
+    count = 0
     delta.requires_grad_()
     for ii in range(nb_iter):
+        count += 1
+        loss,w_loss = loss_fn(predict, yvar,xvar, xvar + delta)
         outputs = predict(xvar + delta)
-        loss = loss_fn(outputs, yvar)
-        if minimize:
-            loss = -loss
+        p = torch.argmax(outputs,dim=1)
+        print(p == yvar)
+        # if torch.max(p == yvar) != 1:
+        #     break # 攻击成功提前结束迭代
+        predict.zero_grad()
+        loss.backward(retain_graph=True)
+        g1 = torch.mean(delta.grad.data.sign().reshape(-1,28*28))
+        delta.grad.data.zero_()
+        w_loss.backward(retain_graph=True)
+        g2 = torch.mean(delta.grad.data.sign().reshape(-1,28*28))
+        small_constant=1e-12
+        g = g1 / g2
+        g = float(g.numpy())
+        beta = 2
+        if count > (nb_iter)/2: # may not coverage
+            print('set beta to 0 at round', count)
+            # beta = beta / 10
+        delta.grad.data.zero_()
+        print('loss',loss)
+        print('w_loss', w_loss)
+        print(count)
+        final_loss = loss + beta * g * w_loss
+        final_loss.backward(retain_graph=True)
 
-        loss.backward()
         if ord == np.inf:
             grad_sign = delta.grad.data.sign()
             delta.data = delta.data + batch_multiply(eps_iter, grad_sign)
@@ -70,7 +91,7 @@ def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
         elif ord == 1:
             grad = delta.grad.data
             grad = normalize_by_pnorm(grad,1)
-            grad = grad * 28 *28
+            grad = grad * 28 * 28
             delta.data = delta.data + batch_multiply(eps_iter, grad)
             delta.data = batch_clamp(eps, delta.data)
             delta.data = clamp(xvar.data + delta.data, clip_min, clip_max

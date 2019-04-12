@@ -50,9 +50,9 @@ def calc_gradient_penalty(netD, real_data, fake_data):
     gradient_penalty = ((gradients_norm - 1) ** 2).mean() * LAMBDA
     return gradient_penalty
 
-class Net(nn.Module):
+class WassNet(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(WassNet, self).__init__()
         main = nn.Sequential(
             nn.Conv2d(1, DIM, 5, stride=2, padding=2),
             # nn.Linear(OUTPUT_DIM, 4*4*4*DIM),
@@ -151,19 +151,12 @@ if __name__ == '__main__':
     ITERS = 200
     parser = argparse.ArgumentParser(description='Train MNIST')
     parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--mode', default="cln")
     parser.add_argument('--train_batch_size', default=100, type=int)
     parser.add_argument('--test_batch_size', default=1000, type=int)
     parser.add_argument('--log_interval', default=10, type=int)
     args = parser.parse_args()
-
+    model_filename = "mnist_wass_net.pt"
     torch.manual_seed(args.seed)
-    if args.mode == "cln":
-        nb_epoch = 10
-        model_filename = "mnist_wass_net.pt"
-    else:
-        raise
-
     train_loader = get_mnist_train_loader(
         batch_size=args.train_batch_size, shuffle=True)
     test_loader = get_mnist_test_loader(
@@ -179,5 +172,5 @@ if __name__ == '__main__':
         model, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=0.2,
         nb_iter=10, eps_iter=0.01, clip_min=0.0, clip_max=1.0,
         targeted=False)
-    w = Wasserstein(Net,args.train_batch_size,LAMBDA,ITERS,train_loader, adversary)
+    w = Wasserstein(WassNet,args.train_batch_size,LAMBDA,ITERS,train_loader, adversary)
     w.train()
