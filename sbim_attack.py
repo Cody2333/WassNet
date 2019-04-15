@@ -4,14 +4,15 @@ import argparse
 import torch
 import torch.nn as nn
 import numpy as np
-from WassNet import WassNet
 from advertorch.utils import predict_from_logits
 from advertorch_examples.utils import get_mnist_test_loader
 from advertorch_examples.utils import _imshow
 from advertorch.test_utils import LeNet5
 from advertorch_examples.utils import TRAINED_MODEL_PATH
 from advertorch.attacks import LinfPGDAttack,LinfBasicIterativeAttack,L1BasicIterativeAttack,GradientAttack,GradientSignAttack
-
+from layers import SinkhornDistance
+from WassNet import WassNet
+from torch.autograd import Variable
 
 parser = argparse.ArgumentParser(description='wbim-attack')
 parser.add_argument('--seed', default=20, type=int)
@@ -38,7 +39,6 @@ model.load_state_dict(
     torch.load(os.path.join(TRAINED_MODEL_PATH, filename),map_location='cpu'))
 model.to(device)
 model.eval()
-
 wass_model_filename = 'mnist_wass_net.pt'
 wass_model = WassNet()
 wass_model.load_state_dict(
@@ -46,13 +46,17 @@ wass_model.load_state_dict(
 wass_model.to(device)
 wass_model.eval()
 
-# define loss
 def myloss(model,yvar,xvar,xadv):
     outputs = model(xadv)
     loss_fn = torch.nn.CrossEntropyLoss()
     loss = loss_fn(outputs, yvar)
-    w_loss = torch.mean(wass_model(xadv))
-    return loss,w_loss
+    if args.beta == 0:
+        return loss,Variable(torch.tensor(0.0),requires_grad=True)
+    sinkhorn = SinkhornDistance(eps=0.1, max_iter=1000, reduction=None)
+    x = xvar.view(-1,28*28,1)
+    y= xadv.view(-1,28*28,1)
+    w_loss,_,_ = sinkhorn(x, y)
+    return loss,-torch.mean(w_loss)
 
 
 adversary = L1BasicIterativeAttack(
@@ -64,6 +68,14 @@ def eu_dist(x,y):
     A=x.reshape(-1,28*28)
     B=y.reshape(-1,28*28)
     return np.mean(np.linalg.norm(A-B,ord=2,axis=1))
+def s_dist(clns,advs):
+    sinkhorn = SinkhornDistance(eps=0.1, max_iter=1000, reduction=None)
+    x = np.array(clns).reshape(-1,28*28,1)
+    y = np.array(advs).reshape(-1,28*28,1)
+    x = torch.tensor(x).float()
+    y = torch.tensor(y).float()
+    w_dist,_,_ = sinkhorn(x, y)
+    return torch.mean(255*w_dist).numpy()
 def w_dist(x,y):
     return (wass_model(x) - wass_model(y)).detach().numpy().mean()
 
@@ -97,6 +109,7 @@ np.save('adv_data/pred_advs.npy',pred_advs)
 
 print('l2 distance:', eu_dist(np.array(clns), np.array(advs)))
 print('w distance:', w_dist(torch.tensor(clns).float(), torch.tensor(advs).float()))
+print('s distance:', s_dist(torch.tensor(clns).float(), torch.tensor(advs).float()))
 print('attack success rate:',1 - (np.array(pred_clns) == np.array(pred_advs)).sum() / len(pred_advs))
 print('average iter count:', np.array(iter_counts).mean())
 # for ii in range(batch_size):

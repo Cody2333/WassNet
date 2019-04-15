@@ -55,18 +55,11 @@ class WassNet(nn.Module):
         super(WassNet, self).__init__()
         main = nn.Sequential(
             nn.Conv2d(1, DIM, 5, stride=2, padding=2),
-            # nn.Linear(OUTPUT_DIM, 4*4*4*DIM),
             nn.LeakyReLU(0.2),
             nn.Conv2d(DIM, 2*DIM, 5, stride=2, padding=2),
-            # nn.Linear(4*4*4*DIM, 4*4*4*DIM),
             nn.LeakyReLU(0.2),
             nn.Conv2d(2*DIM, 4*DIM, 5, stride=2, padding=2),
-            # nn.Linear(4*4*4*DIM, 4*4*4*DIM),
             nn.LeakyReLU(0.2),
-            # nn.Linear(4*4*4*DIM, 4*4*4*DIM),
-            # nn.LeakyReLU(True),
-            # nn.Linear(4*4*4*DIM, 4*4*4*DIM),
-            # nn.LeakyReLU(True),
         )
         self.main = main
         self.output = nn.Linear(4*4*4*DIM, 1)

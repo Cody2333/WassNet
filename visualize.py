@@ -3,12 +3,12 @@ import numpy as np
 import torch
 filename = 'loss_final.npy'
 data = np.load(filename)
-data = data[0:-20000:150]
+data = data[0:-40000:150]
 print(data.shape)
 plt.plot(data,label='loss')
 plt.xlabel('iter_n')
 plt.ylabel('loss')
 plt.ylim((-2.15, -1))
-# plt.ylim((1,2.23))
+# plt.ylim((1,2.27))
 plt.legend()
 plt.show()

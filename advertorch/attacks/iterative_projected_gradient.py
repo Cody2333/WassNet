@@ -29,7 +29,7 @@ from .utils import rand_init_delta
 
 def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
                       delta_init=None, minimize=False, ord=np.inf,
-                      clip_min=0.0, clip_max=1.0):
+                      clip_min=0.0, clip_max=1.0, beta = 0.5,early_stop = True):
     """
     Iteratively maximize the loss over the input. It is a shared method for
     iterative attacks including IterativeGradientSign, LinfPGD, etc.
@@ -54,31 +54,29 @@ def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
         delta = torch.zeros_like(xvar)
     count = 0
     delta.requires_grad_()
+    print(nb_iter)
     for ii in range(nb_iter):
         count += 1
         loss,w_loss = loss_fn(predict, yvar,xvar, xvar + delta)
         outputs = predict(xvar + delta)
         p = torch.argmax(outputs,dim=1)
-        print(p == yvar)
-        # if torch.max(p == yvar) != 1:
-        #     break # 攻击成功提前结束迭代
+        if torch.max(p == yvar) != 1 and early_stop:
+            break # 攻击成功提前结束迭代
         predict.zero_grad()
         loss.backward(retain_graph=True)
-        g1 = torch.mean(delta.grad.data.sign().reshape(-1,28*28))
+        g1 = torch.mean(delta.grad.data.abs().reshape(-1,28*28)).float()
         delta.grad.data.zero_()
         w_loss.backward(retain_graph=True)
-        g2 = torch.mean(delta.grad.data.sign().reshape(-1,28*28))
-        small_constant=1e-12
+        g2 = torch.mean(delta.grad.data.abs().reshape(-1,28*28)).float()
         g = g1 / g2
-        g = float(g.numpy())
-        beta = 2
-        if count > (nb_iter)/2: # may not coverage
-            print('set beta to 0 at round', count)
-            # beta = beta / 10
+        g = torch.min(g,torch.tensor(1e6))
+        if count % 5 == 0: # may not coverage
+            beta = beta / 10
         delta.grad.data.zero_()
-        print('loss',loss)
-        print('w_loss', w_loss)
-        print(count)
+        # print('loss',loss)
+        # print('w_loss', w_loss)
+        # print(count)
+        # print((p == yvar).sum())
         final_loss = loss + beta * g * w_loss
         final_loss.backward(retain_graph=True)
 
@@ -111,7 +109,8 @@ def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
         delta.grad.data.zero_()
 
     x_adv = clamp(xvar + delta, clip_min, clip_max)
-    return x_adv
+    iter_count = count
+    return x_adv, iter_count
 
 
 
@@ -126,7 +125,7 @@ class PGDAttack(Attack, LabelMixin):
     def __init__(
             self, predict, loss_fn=None, eps=0.3, nb_iter=40,
             eps_iter=0.01, rand_init=True, clip_min=0., clip_max=1.,
-            ord=np.inf, targeted=False):
+            ord=np.inf, targeted=False, beta = 0.5,early_stop=True):
         """
         Create an instance of the PGDAttack.
 
@@ -148,6 +147,8 @@ class PGDAttack(Attack, LabelMixin):
         self.eps_iter = eps_iter
         self.rand_init = rand_init
         self.ord = ord
+        self.beta = beta
+        self.early_stop = early_stop
         self.targeted = targeted
         if self.loss_fn is None:
             self.loss_fn = nn.CrossEntropyLoss(reduction="sum")
@@ -177,14 +178,14 @@ class PGDAttack(Attack, LabelMixin):
             delta.data = clamp(
                 x + delta.data, min=self.clip_min, max=self.clip_max) - x
 
-        rval = perturb_iterative(
+        rval,iter_count = perturb_iterative(
             x, y, self.predict, nb_iter=self.nb_iter,
             eps=self.eps, eps_iter=self.eps_iter,
             loss_fn=self.loss_fn, minimize=self.targeted,
             ord=self.ord, clip_min=self.clip_min,
-            clip_max=self.clip_max, delta_init=delta)
+            clip_max=self.clip_max, delta_init=delta, beta= self.beta, early_stop = self.early_stop)
 
-        return rval.data
+        return rval.data,iter_count
 
 
 class LinfPGDAttack(PGDAttack):
@@ -223,12 +224,12 @@ class L1BasicIterativeAttack(PGDAttack):
     """Like GradientAttack but with several steps for each epsilon."""
 
     def __init__(self, predict, loss_fn=None, eps=0.1, nb_iter=10,
-                 eps_iter=0.05, clip_min=0., clip_max=1., targeted=False):
+                 eps_iter=0.05, clip_min=0., clip_max=1., targeted=False, beta = 0.5,early_stop=True):
         ord = 1
         rand_init = False
         super(L1BasicIterativeAttack, self).__init__(
             predict, loss_fn, eps, nb_iter, eps_iter, rand_init,
-            clip_min, clip_max, ord, targeted)
+            clip_min, clip_max, ord, targeted, beta,early_stop)
 
 class LinfBasicIterativeAttack(PGDAttack):
     """
@@ -386,7 +387,7 @@ class FastFeatureAttack(Attack):
         guide = replicate_input(guide)
         guide_ftr = self.predict(guide).detach()
 
-        xadv = perturb_iterative(source, guide_ftr, self.predict,
+        xadv, iter_count = perturb_iterative(source, guide_ftr, self.predict,
                                  self.nb_iter, eps_iter=self.eps_iter,
                                  loss_fn=self.loss_fn, minimize=True,
                                  ord=np.inf, eps=self.eps,
@@ -396,4 +397,4 @@ class FastFeatureAttack(Attack):
 
         xadv = clamp(xadv, self.clip_min, self.clip_max)
 
-        return xadv.data
+        return xadv.data,iter_count
