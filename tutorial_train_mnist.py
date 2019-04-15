@@ -22,20 +22,6 @@ from advertorch_examples.utils import get_mnist_train_loader
 from advertorch_examples.utils import get_mnist_test_loader
 from advertorch_examples.utils import TRAINED_MODEL_PATH
 
-wass_model_filename = 'mnist_wass_net.pt'
-wass_model = WassNet()
-wass_model.load_state_dict(
-    torch.load(os.path.join(TRAINED_MODEL_PATH, wass_model_filename),map_location='cpu'))
-wass_model.to(device)
-wass_model.eval()
-# define loss
-def myloss(model,yvar,xvar,xadv):
-    outputs = model(xadv)
-    loss_fn = torch.nn.CrossEntropyLoss()
-    loss = loss_fn(outputs, yvar)
-    w_loss = torch.mean(wass_model(xadv))
-    return loss,w_loss
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train MNIST')
     parser.add_argument('--seed', default=0, type=int)
@@ -48,6 +34,20 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
+
+    wass_model_filename = 'mnist_wass_net.pt'
+    wass_model = WassNet()
+    wass_model.load_state_dict(
+        torch.load(os.path.join(TRAINED_MODEL_PATH, wass_model_filename),map_location='cpu'))
+    wass_model.to(device)
+    wass_model.eval()
+    # define loss
+    def myloss(model,yvar,xvar,xadv):
+        outputs = model(xadv)
+        loss_fn = torch.nn.CrossEntropyLoss()
+        loss = loss_fn(outputs, yvar)
+        w_loss = torch.mean(wass_model(xadv))
+        return loss,w_loss
     if args.mode == "cln":
         flag_advtrain = False
         nb_epoch = 10
@@ -84,8 +84,7 @@ if __name__ == '__main__':
                 # when performing attack, the model needs to be in eval mode
                 # also the parameters should be accumulating gradients
                 with ctx_noparamgrad_and_eval(model):
-                    data = adversary.perturb(data, target)
-            print(data)
+                    data,_ = adversary.perturb(data, target)
             optimizer.zero_grad()
             output = model(data)
             loss = F.cross_entropy(

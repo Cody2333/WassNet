@@ -54,7 +54,6 @@ def perturb_iterative(xvar, yvar, predict, nb_iter, eps, eps_iter, loss_fn,
         delta = torch.zeros_like(xvar)
     count = 0
     delta.requires_grad_()
-    print(nb_iter)
     for ii in range(nb_iter):
         count += 1
         loss,w_loss = loss_fn(predict, yvar,xvar, xvar + delta)
